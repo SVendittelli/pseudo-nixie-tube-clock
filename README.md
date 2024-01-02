@@ -11,3 +11,5 @@ sudo apt-get install python3-pil
 sudo apt-get install python3-numpy
 pip3 install -r requirements.txt
 ```
+
+Enable the `SPI` & `I2C` interfaces after running `sudo raspi-config`.
