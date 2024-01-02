@@ -1,0 +1,2 @@
+spidev
+rpi_ws281x
