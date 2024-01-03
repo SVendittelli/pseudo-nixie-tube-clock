@@ -24,8 +24,8 @@ elif dir.count('rpi') == 0:
 else:
     dir = dir
 
-numpicdir = dir + "/numpic/A/"
-menupicdir = dir + "/menupic/B/"
+numpic_dir = dir + "/numpic/A/"
+menupic_dir = dir + "/menupic/B/"
 
 print("1. LCD init")
 BlackLightLev =  8
@@ -48,7 +48,7 @@ bme280 = BME280.BME280()
 print("4. RTC init")
 rtc = DS3231.DS3231()
 rtc.SET_Hour_Mode(24)
-rtc.SET_Time(datetime.datetime.now().hour, datetime.datetime.now().minute, datetime.datetime.now().second) #Need to modify time zone
+# rtc.SET_Time(datetime.datetime.now().hour, datetime.datetime.now().minute, datetime.datetime.now().second) #Need to modify time zone
 # rtc.SET_Time(23, 59, 55) #Need to modify time zone
 # rtc.SET_Time(7, 59, 55) #Need to modify time zone
 
@@ -56,57 +56,70 @@ AlarmClock = [10,0,0]
 
 gpios = GPIOCFG.GPIOCFG()
 
-def ShowFirstTime():
-    Time = rtc.Read_Time()
 
-    lcd.ShowImage(0, Image.open(numpicdir + str(Time[0]//10)+'.jpg'))
-    lcd.ShowImage(1, Image.open(numpicdir + str(Time[0]%10)+'.jpg'))
-    lcd.ShowImage(2, Image.open(numpicdir + str(Time[1]//10)+'.jpg'))
-    lcd.ShowImage(3, Image.open(numpicdir + str(Time[1]%10)+'.jpg'))
-    lcd.ShowImage(4, Image.open(numpicdir + str(Time[2]//10)+'.jpg'))
-    lcd.ShowImage(5, Image.open(numpicdir + str(Time[2]%10)+'.jpg'))
+def show_number_on_screen(num: int, screen: int):
+    if num < 0 or num > 9:
+        raise ValueError('num must be between 0 and 9')
+    if screen < 0 or screen > 5:
+        raise ValueError('screen must be between 0 and 5')
 
-def mainFun():
-    print ("mainThread Start")
-    ShowFirstTime()
+    lcd.ShowImage(screen, Image.open(numpic_dir + str(num)+'.jpg'))
 
-    while(1):
-        if(KeyListen() == 1):
-            ShowFirstTime()
 
-        Time = rtc.Read_Time()
+def show_time(rtc_time: list[int]):
+    [hour, minute, second] = rtc_time
 
-        picsecl = numpicdir + str(Time[2]%10)+'.jpg'
-        lcd.ShowImage(5, Image.open(picsecl))
-        if((Time[2]%10) == 0):  # Hh:Mm:Ss s=0, S+1
-            picsech = numpicdir + str(Time[2]//10)+'.jpg'
-            lcd.ShowImage(4, Image.open(picsech))
-            if((Time[2]//10) == 0): # Hh:Mm:Ss S=0 m+1
-                picminl = numpicdir + str(Time[1]%10)+'.jpg'
-                lcd.ShowImage(3, Image.open(picminl))
-                if((Time[1]%10) == 0): # Hh:Mm:Ss m=0 M+1
-                    picminh = numpicdir + str(Time[1]//10)+'.jpg'
-                    lcd.ShowImage(2, Image.open(picminh))
-                    if((Time[1]//10) == 0): # Hh:Mm:Ss M=0 h+1
-                        pichourl = numpicdir + str(Time[0]%10)+'.jpg'
-                        lcd.ShowImage(1, Image.open(pichourl))
-                        if((Time[0]%10) == 0):
-                            pichourh = numpicdir + str(Time[0]//10)+'.jpg'
-                            lcd.ShowImage(0, Image.open(pichourh))
-                            #Update time once a day
-                            rtc.SET_Time(datetime.datetime.now().hour, datetime.datetime.now().minute, datetime.datetime.now().second)
+    show_number_on_screen(hour // 10, 0)
+    show_number_on_screen(hour % 10, 1)
+    show_number_on_screen(minute // 10, 2)
+    show_number_on_screen(minute % 10, 3)
+    show_number_on_screen(second // 10, 4)
+    show_number_on_screen(second % 10, 5)
 
-        if(AlarmClock[0] == Time[0] and AlarmClock[1] == Time[1] and AlarmClock[2] == Time[2]):
+
+def show_first_time():
+    rtc_time = rtc.Read_Time()
+    show_time(rtc_time)
+    return rtc_time
+
+
+def main():
+    print("mainThread Start")
+    previous_time = show_first_time()
+
+    while (1):
+        if (KeyListen() == 1):
+            show_first_time()
+
+        [hour, minute, second] = rtc.Read_Time()
+
+        # Always update the final digit
+        show_number_on_screen(second % 10, 5)
+
+        # Only update the other digits if they have changed
+        if previous_time[2] // 10 != second // 10:
+            show_number_on_screen(second // 10, 4)
+        if previous_time[1] % 10 != minute % 10:
+            show_number_on_screen(minute % 10, 3)
+        if previous_time[1] // 10 != minute // 10:
+            show_number_on_screen(minute // 10, 2)
+        if previous_time[0] % 10 != hour % 10:
+            show_number_on_screen(hour % 10, 1)
+        if previous_time[0] // 10 != hour // 10:
+            show_number_on_screen(hour // 10, 0)
+
+        # Update the time on the RTC if it is midnight
+        if [hour, minute, second] == [0, 0, 0]:
+            now = datetime.datetime.now()
+            rtc.SET_Time(now.hour, now.minute, now.second)
+
+        # Check if the alarm clock time has been reached
+        if (AlarmClock[0] == hour and AlarmClock[1] == minute and AlarmClock[2] == second):
             print("Alarm Clock, beep play song....")
             gpios.BeepplaySong(3)
-            Time = rtc.Read_Time()
-            lcd.ShowImage(0, Image.open(numpicdir + str(Time[0]//10)+'.jpg'))
-            lcd.ShowImage(1, Image.open(numpicdir + str(Time[0]%10)+'.jpg'))
-            lcd.ShowImage(2, Image.open(numpicdir + str(Time[1]//10)+'.jpg'))
-            lcd.ShowImage(3, Image.open(numpicdir + str(Time[1]%10)+'.jpg'))
-            lcd.ShowImage(4, Image.open(numpicdir + str(Time[2]//10)+'.jpg'))
-            lcd.ShowImage(5, Image.open(numpicdir + str(Time[2]%10)+'.jpg'))
-    print ("beepThread Stop")
+            show_time(rtc.Read_Time())
+
+        previous_time = [hour, minute, second]
 
 
 debouncetime = 0.09 #50ms debounce time, Prevent button accidental touch
@@ -127,12 +140,12 @@ def ShowMenuFun():
     # global NowId
     global NowId
     LastPicId = 1
-    pic1 = Image.open(menupicdir + '1.jpg')
-    pic2 = Image.open(menupicdir + '2.jpg')
-    pic3 = Image.open(menupicdir + '3.jpg')
-    pic4 = Image.open(menupicdir + '4.jpg')
-    pic5 = Image.open(menupicdir + '5.jpg')
-    pic6 = Image.open(menupicdir + '6.jpg')
+    pic1 = Image.open(menupic_dir + '1.jpg')
+    pic2 = Image.open(menupic_dir + '2.jpg')
+    pic3 = Image.open(menupic_dir + '3.jpg')
+    pic4 = Image.open(menupic_dir + '4.jpg')
+    pic5 = Image.open(menupic_dir + '5.jpg')
+    pic6 = Image.open(menupic_dir + '6.jpg')
     # print("Now id = %d" %NowId)
     # print("ShowMenuFlg = %d" %ShowMenuFlg)
     if(ShowMenuFlg == 1):
@@ -195,12 +208,12 @@ def ShowMenuFun():
 
     #show menu pic
     if(left_flg == 1 or right_flg == 1):
-        NowPicName = Image.open(menupicdir + str(NowId)+ '.jpg')
+        NowPicName = Image.open(menupic_dir + str(NowId)+ '.jpg')
         drawNowPic = ImageDraw.Draw(NowPicName)
         drawNowPic.line(MenuChoseRect, fill=255, width=10)
         lcd.ShowImage(NowId - 1, NowPicName)
         if(NowId != LastPicId):#first time donot show last pic,because first time not last pic
-            LastPicName = Image.open(menupicdir + str(LastPicId)+ '.jpg')
+            LastPicName = Image.open(menupic_dir + str(LastPicId)+ '.jpg')
             drawLastPic = ImageDraw.Draw(LastPicName)
             lcd.ShowImage(LastPicId - 1, LastPicName)
         right_flg = 0
@@ -218,14 +231,14 @@ def SetTimeFun():
     # rtc.SET_Time(12, 34, 56)
     Time = rtc.Read_Time()
     SetTimeBuf = [Time[0]//10, Time[0]%10, Time[1]//10, Time[1]%10, Time[2]//10, Time[2]%10]
-    NowTimeNumpicdir = Image.open(numpicdir + str(Time[0]//10)+'.jpg')
+    NowTimeNumpicdir = Image.open(numpic_dir + str(Time[0]//10)+'.jpg')
     NowTimeNumpicdir = PIL.ImageOps.invert(NowTimeNumpicdir)
     lcd.ShowImage(0, NowTimeNumpicdir)
-    lcd.ShowImage(1, Image.open(numpicdir + str(Time[0]%10)+'.jpg'))
-    lcd.ShowImage(2, Image.open(numpicdir + str(Time[1]//10)+'.jpg'))
-    lcd.ShowImage(3, Image.open(numpicdir + str(Time[1]%10)+'.jpg'))
-    lcd.ShowImage(4, Image.open(numpicdir + str(Time[2]//10)+'.jpg'))
-    lcd.ShowImage(5, Image.open(numpicdir + str(Time[2]%10)+'.jpg'))
+    lcd.ShowImage(1, Image.open(numpic_dir + str(Time[0]%10)+'.jpg'))
+    lcd.ShowImage(2, Image.open(numpic_dir + str(Time[1]//10)+'.jpg'))
+    lcd.ShowImage(3, Image.open(numpic_dir + str(Time[1]%10)+'.jpg'))
+    lcd.ShowImage(4, Image.open(numpic_dir + str(Time[2]//10)+'.jpg'))
+    lcd.ShowImage(5, Image.open(numpic_dir + str(Time[2]%10)+'.jpg'))
     print("TimePicId = %d" %TimePicId)
     while(1):
         if(TimeReturn == 2):
@@ -276,13 +289,13 @@ def SetTimeFun():
             NowTimeNum = SetTimeBuf[TimePicId-1]
             print("NowTimeNum = %d " %(NowTimeNum))
 
-            NowTimeNumpicdir = Image.open(numpicdir + str(NowTimeNum)+'.jpg')
+            NowTimeNumpicdir = Image.open(numpic_dir + str(NowTimeNum)+'.jpg')
             NowTimeNumpicdir = PIL.ImageOps.invert(NowTimeNumpicdir)
             lcd.ShowImage(TimePicId - 1, NowTimeNumpicdir)
             if(LastTimePicId != TimePicId):
                 # LastTimeNum = LastTimePicId//2
                 LastTimeNum = SetTimeBuf[LastTimePicId-1]
-                LastTimepicdir = Image.open(numpicdir + str(LastTimeNum)+'.jpg')
+                LastTimepicdir = Image.open(numpic_dir + str(LastTimeNum)+'.jpg')
                 lcd.ShowImage(LastTimePicId - 1, LastTimepicdir)
 
         while(mode_flg == 1):#enter to change time num
@@ -346,7 +359,7 @@ def SetTimeFun():
                     elif(NowTimeNum < 0):
                         NowTimeNum = 9
                 SetTimeBuf[TimePicId-1] = NowTimeNum
-                NowTimeNumpicdir = Image.open(numpicdir + str(NowTimeNum)+'.jpg')
+                NowTimeNumpicdir = Image.open(numpic_dir + str(NowTimeNum)+'.jpg')
                 NowTimeNumpicdir = PIL.ImageOps.invert(NowTimeNumpicdir)
                 lcd.ShowImage(TimePicId - 1, NowTimeNumpicdir)
 
@@ -363,14 +376,14 @@ def SetAnAlarmFun():
     # AlarmClock = [8,0,0]
     # SetAlarmClockBuf = [0, 0, 0, 0, 0, 0]
     SetAlarmClockBuf = [AlarmClock[0]//10, AlarmClock[0]%10, AlarmClock[1]//10, AlarmClock[1]%10, AlarmClock[2]//10, AlarmClock[2]%10]
-    NowTimeNumpicdir = Image.open(numpicdir + str(SetAlarmClockBuf[0]) + '.jpg')
+    NowTimeNumpicdir = Image.open(numpic_dir + str(SetAlarmClockBuf[0]) + '.jpg')
     NowTimeNumpicdir = PIL.ImageOps.invert(NowTimeNumpicdir)
     lcd.ShowImage(0, NowTimeNumpicdir)
-    lcd.ShowImage(1, Image.open(numpicdir + str(SetAlarmClockBuf[1]) + '.jpg'))
-    lcd.ShowImage(2, Image.open(numpicdir + str(SetAlarmClockBuf[2]) + '.jpg'))
-    lcd.ShowImage(3, Image.open(numpicdir + str(SetAlarmClockBuf[3]) + '.jpg'))
-    lcd.ShowImage(4, Image.open(numpicdir + str(SetAlarmClockBuf[4]) + '.jpg'))
-    lcd.ShowImage(5, Image.open(numpicdir + str(SetAlarmClockBuf[5]) + '.jpg'))
+    lcd.ShowImage(1, Image.open(numpic_dir + str(SetAlarmClockBuf[1]) + '.jpg'))
+    lcd.ShowImage(2, Image.open(numpic_dir + str(SetAlarmClockBuf[2]) + '.jpg'))
+    lcd.ShowImage(3, Image.open(numpic_dir + str(SetAlarmClockBuf[3]) + '.jpg'))
+    lcd.ShowImage(4, Image.open(numpic_dir + str(SetAlarmClockBuf[4]) + '.jpg'))
+    lcd.ShowImage(5, Image.open(numpic_dir + str(SetAlarmClockBuf[5]) + '.jpg'))
     print("TimePicId = %d" %TimePicId)
     while(1):
         if(AlarmClockReturn == 2):
@@ -419,13 +432,13 @@ def SetAnAlarmFun():
             NowAlarmClockNum = SetAlarmClockBuf[TimePicId-1]
             print("NowAlarmClockNum = %d " %(NowAlarmClockNum))
 
-            NowAlarmClockNumpicdir = Image.open(numpicdir + str(NowAlarmClockNum)+'.jpg')
+            NowAlarmClockNumpicdir = Image.open(numpic_dir + str(NowAlarmClockNum)+'.jpg')
             NowAlarmClockNumpicdir = PIL.ImageOps.invert(NowAlarmClockNumpicdir)
             lcd.ShowImage(TimePicId - 1, NowAlarmClockNumpicdir)
             if(LastTimePicId != TimePicId):
                 # LastTimeNum = LastTimePicId//2
                 LastTimeNum = SetAlarmClockBuf[LastTimePicId-1]
-                LastTimepicdir = Image.open(numpicdir + str(LastTimeNum)+'.jpg')
+                LastTimepicdir = Image.open(numpic_dir + str(LastTimeNum)+'.jpg')
                 lcd.ShowImage(LastTimePicId - 1, LastTimepicdir)
 
         while(mode_flg == 1):#enter to change time num
@@ -487,7 +500,7 @@ def SetAnAlarmFun():
                     elif(NowAlarmClockNum < 0):
                         NowAlarmClockNum = 9
                 SetAlarmClockBuf[TimePicId-1] = NowAlarmClockNum
-                NowAlarmClockNumpicdir = Image.open(numpicdir + str(NowAlarmClockNum)+'.jpg')
+                NowAlarmClockNumpicdir = Image.open(numpic_dir + str(NowAlarmClockNum)+'.jpg')
                 NowAlarmClockNumpicdir = PIL.ImageOps.invert(NowAlarmClockNumpicdir)
                 lcd.ShowImage(TimePicId - 1, NowAlarmClockNumpicdir)
 
@@ -636,12 +649,12 @@ def SetBLFun():
     # BlackLightLev = 1
     # LastSetBlackLightLev = 1
     SetLcdBLReturn = 0
-    lcd.ShowImage(0, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-    lcd.ShowImage(1, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-    lcd.ShowImage(2, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-    lcd.ShowImage(3, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-    lcd.ShowImage(4, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-    lcd.ShowImage(5, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
+    lcd.ShowImage(0, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+    lcd.ShowImage(1, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+    lcd.ShowImage(2, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+    lcd.ShowImage(3, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+    lcd.ShowImage(4, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+    lcd.ShowImage(5, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
     print("BlackLightLev = %d" %BlackLightLev)
     while(1):
         if(SetLcdBLReturn == 2):
@@ -684,12 +697,12 @@ def SetBLFun():
         if(left_flg==1 or right_flg==1):
             left_flg = 0
             right_flg = 0
-            lcd.ShowImage(0, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-            lcd.ShowImage(1, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-            lcd.ShowImage(2, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-            lcd.ShowImage(3, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-            lcd.ShowImage(4, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
-            lcd.ShowImage(5, Image.open(numpicdir + str(BlackLightLev)+'.jpg'))
+            lcd.ShowImage(0, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+            lcd.ShowImage(1, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+            lcd.ShowImage(2, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+            lcd.ShowImage(3, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+            lcd.ShowImage(4, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
+            lcd.ShowImage(5, Image.open(numpic_dir + str(BlackLightLev)+'.jpg'))
             lcd.SetLcdBlackLight(BlackLightLev)
 
 def ShowTemHumFun():
@@ -803,13 +816,13 @@ def KeyListen():
                     # ReturnFun()
                     ShowMenuFlg = 1
                     NowId = 1
-                    ShowFirstTime()
+                    show_first_time()
                     # KeyListenFlg = 0
                     return 1
         return 0
 
 
-mainFun()
+main()
 
 rgb.Close()
 gpios.Beep()
